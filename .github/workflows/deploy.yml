@@ -1,0 +1,58 @@
+# Checks the PHP and uploads the app to Hostinger whenever main changes (or when you press "Run workflow").
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A file with a PHP syntax error never reaches the server
+      - name: Check PHP files
+        run: |
+          set -e
+          find . -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l
+
+      - name: Install lftp
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+
+      # Uses the FTP account made for this app only (its folder is public_html/services).
+      # Never deletes anything on the server, so data/ (settings, documents) is safe.
+      - name: Upload to Hostinger
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          LFTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_DIR: ${{ secrets.FTP_DIR }}
+        run: |
+          set -e
+          if [ -z "$FTP_SERVER" ] || [ -z "$FTP_USERNAME" ] || [ -z "$LFTP_PASSWORD" ]; then
+            echo "::warning::The FTP secrets aren't set yet, so nothing was uploaded. Add FTP_SERVER, FTP_USERNAME and FTP_PASSWORD under Settings > Secrets and variables > Actions, then run this workflow again."
+            exit 0
+          fi
+          REMOTE_DIR="${FTP_DIR:-./}"
+          lftp -c "
+            set ftp:ssl-force true;
+            set ftp:ssl-protect-data true;
+            set ssl:verify-certificate false;
+            set ftp:passive-mode true;
+            set net:max-retries 3;
+            set net:timeout 30;
+            open --env-password -u \"$FTP_USERNAME\" \"$FTP_SERVER\";
+            mirror --reverse --verbose --parallel=4 --no-perms \
+              -x '^\\.git' -x '^\\.github/' -x '^docs/' -x '^README\\.md$' -x '^SETUP\\.md$' \
+              ./ \"$REMOTE_DIR\";
+          "
+          echo "Upload finished to $REMOTE_DIR"

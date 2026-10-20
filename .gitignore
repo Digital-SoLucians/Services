@@ -1,0 +1,7 @@
+# Created on the server by the setup page and the app: settings, encrypted documents, logs, sessions.
+# Never commit these.
+data/*
+!data/.htaccess
+
+.DS_Store
+Thumbs.db

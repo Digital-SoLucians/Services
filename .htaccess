@@ -1,0 +1,42 @@
+# SLU Services on Hostinger (services.digitalsolucians.com)
+Options -Indexes
+DirectoryIndex index.php
+ErrorDocument 404 /index.php
+
+AddType font/woff2 .woff2
+AddType application/manifest+json .webmanifest
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Pass agency API keys (Authorization header) through to PHP
+  RewriteCond %{HTTP:Authorization} .
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+  # Always use HTTPS
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # Opened through digitalsolucians.com/services/ -> use the subdomain
+  RewriteCond %{HTTP_HOST} ^(www\.)?digitalsolucians\.com$ [NC]
+  RewriteRule ^(.*)$ https://services.digitalsolucians.com/$1 [L,R=301]
+
+  # Code, private data (ID documents, settings, logs) and the cron script are never served
+  RewriteRule ^(app|data)(/|$) - [F,L]
+  RewriteRule ^cron\.php$ - [F,L]
+  RewriteRule (^|/)\. - [F,L]
+  RewriteRule \.(md|sql|log|json|lock|bin)$ - [F,L]
+
+  # Everything that isn't a real file goes to the app
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^ index.php [L,QSA]
+</IfModule>
+
+<IfModule mod_headers.c>
+  <FilesMatch "\.(css|js|svg|woff2|png)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  # the main site's .htaccess blocks the camera; ID selfies need it here
+  Header always set Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+</IfModule>
